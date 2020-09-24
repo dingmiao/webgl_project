@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+        <style>
+            @media screen and (max-width: 1500px) and (orientation:portrait) {canvas{width: 100% !important; margin:0 !important} #control-panel{width: 100%;margin: 0 !important} }
+            @media screen and (max-height: 1500px) and (orientation:landscape){canvas{width: 100vh !important;height: 100vh !important; margin:0 !important} #title{display: none} #control-panel{margin: 0 !important}}
+            *{background: #EEEEEE; box-sizing: border-box;font-family: Helvetica, Arial, "Microsoft YaHei",sans-serif;color:#444}
+            hr{border:0.2px solid #444}
+            input{vertical-align: middle}
+            button{user-select: none; cursor: pointer; outline: none;background: #385817;color: #ffffff;border: none;border-radius: 2px;margin-right:10px;padding: 3px 14px;transition: background ease 0.2s}
+            button:hover{background: #69964f;transition: background ease 0.2s}
+            button:active{background: #ccc;transition: background ease 0.1s}
+            canvas{width:1500px; background: #000;border-radius: 2px;border-left:1px solid #000000;grab;cursor:-webkit-grab}
+            canvas:active{cursor: grabbing;cursor:-webkit-grabbing}
+            #control-panel{display:inline-block;background:#eee; vertical-align: top;min-width: 170px;border-radius: 2px;padding: 10px;margin: 0 10px;font-size: 14px;user-select: none;-moz-user-select: none}
+            .control-panel-title{margin: 0 0 10px 0;color: black}
+            .column{margin: 10px 0;color: black}
+            .left-content{width: 25%; display: inline-block}
+            .right-content{width: 62%;display: inline-block}
+        </style>
+        <title>Final Project</title>
+    </head>
+
+    <!-- 顶点着色器 -->
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        attribute vec4 aPosition;
+        attribute vec4 aNormal;
+        attribute vec2 aTexCoord;
+
+        uniform mat4 uObjectTransformMatrix;
+        uniform mat4 uModelMatrix;
+        uniform mat4 uModelViewMatrix;
+        uniform mat4 uProjectionMatrix;
+        uniform vec4 uLightPosition;
+
+        varying vec3 vN, vL, vE;
+        varying vec2 vTexCoord;
+        varying float vD;
+
+        void main(){
+            mat4 transformMatrix = uModelViewMatrix * uModelMatrix * uObjectTransformMatrix;
+            vec4 pos = transformMatrix * aPosition;
+
+            // 光照
+            if(uLightPosition.z == 0.0){
+                vL = normalize(uLightPosition.xyz);
+                vD = length(uLightPosition.xyz);
+            }  
+            else{
+                vec3 temp = (uModelViewMatrix*uLightPosition).xyz - pos.xyz;
+                vD = length(temp);
+                vL = normalize(temp); 
+            }
+            vE = -normalize(pos.xyz);
+            vN = normalize((transformMatrix * aNormal).xyz);
+            vTexCoord = aTexCoord;
+            gl_Position = uProjectionMatrix * pos;
+            
+        }
+    </script>
+    <!-- 片元着色器 -->
+    <script id="fragment-shader" type="x-shader/x-fragment">
+        precision mediump float;
+
+        uniform vec3 uAmbientProduct, uDiffuseProduct, uSpecularProduct;
+        uniform float uShininess;
+        uniform float uAlpha;
+        uniform sampler2D uTexture;
+        
+        varying vec3 vN, vL, vE;
+        varying vec2 vTexCoord;
+        varying float vD;
+
+        void main(){        
+            vec3 H = normalize( vL + vE );
+            vec3 ambient = uAmbientProduct;
+        
+            float Kd = max( dot(vL, vN), 0.0 );
+            vec3 diffuse = Kd * uDiffuseProduct;
+        
+            float Ks = pow( max(dot(vN, H), 0.0), uShininess );
+            vec3 specular = Ks * uSpecularProduct;
+            
+            if(dot(vL, vN) < 0.0 ) specular = vec3(0.0, 0.0, 0.0);
+        
+            vec4 fColor = vec4(ambient + 50.0/(vD*(vD+0.02)) * (diffuse + specular),1.0);
+            fColor.a = uAlpha;
+            if(vTexCoord.x==0.0 && vTexCoord.y==0.0){
+                gl_FragColor = fColor;
+            }else{
+                gl_FragColor = fColor*texture2D(uTexture, vTexCoord);
+            }
+            
+        }
+            
+    </script>
+    <body>
+        <!-- <h1 id="title">图形学期末作业</h1>
+        <h4 id="author">丁宇晨</h4> -->
+        
+        <div id="control-panel">
+            <h4 class="control-panel-title">控制器</h4>
+                <div class="column">
+                    <label class="control-panel-title">旋转速度: </label><span id="angular-speed">1.0</span>
+                </div>
+                <div class="colomn">
+                    <button onclick="cubeCtr.decreaseAngularSpeed()">减小</button>
+                    <button onclick="cubeCtr.increaseAngularSpeed()">增大</button>
+                    <button onclick="cubeCtr.inverseAngularSpeed()">反向</button>
+                </div>
+                <div class="column">
+                    <label class="control-panel-title">光源位置: </label><span id="light-info"></span>
+                </div>
+                
+                <div class="colomn"><label class="left-content">radius:</label><input id="light-r" class="right-content" type="range" value="8" step ="0.05" min="7" max="9"></div>
+                <div class="colomn"><label class="left-content">theta:</label><input id="light-theta"  class="right-content" type="range" step ="0.1" value="0" min="0" max="6.284"></div>
+                <div class="colomn"><label class="left-content">phi:</label><input id="light-phi"  class="right-content"type="range" step ="0.1" value="-0.3" min="-0.3" max="6.284"></div>
+                <div class="column">
+                    <label class="control-panel-title">投影方式: </label><span id="projection-mode">透视</span>
+                </div>
+                <div class="colomn">
+                    <button id="switch-projection-mode">切换</button>
+                </div>
+                <div class="colomn">
+                    <hr>
+                </div>
+                <div>提示:</div>
+                <div>WASD控制摄像机平移</div>
+                <div>鼠标拖动整体</div>
+				
+				<div>by--丁宇晨</div>
+
+        </div>
+		<div style="position:relative;display:inline-block">
+		    <canvas id="gl-canvas" width="2048" height="2048">opps.....您的浏览器不支持HTML5 canvas</canvas>
+		</div>
+        <script type="text/javascript" src="../Common/webgl-utils.js"></script>
+        <script type="text/javascript" src="../Common/initShaders.js"></script>
+        <script type="text/javascript" src="../Common/MV.js"></script>
+        <script type="text/javascript" src="jquery-3.2.1.min.js"></script>
+        <script type="text/javascript" src="main.js"></script>
+    </body>
+</html>
